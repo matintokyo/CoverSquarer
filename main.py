@@ -33,11 +33,9 @@ class SquarerFrame(squarer_gui.MyFrame):
         self.show_folder_button.Bind(wx.EVT_BUTTON, self.on_show_output_folder)
 
     def on_input_change(self, event):
-        print("on input change")
         self.config.Write("input_dir_path", self.input_dir_picker.GetPath())
 
     def on_output_change(self, event):
-        print("on output change")
         self.config.Write("output_dir_path", self.output_dir_picker.GetPath())
 
     def on_show_single_file(self, event):
@@ -108,19 +106,23 @@ class SquarerFrame(squarer_gui.MyFrame):
         self.statusbar.SetStatusText(f"Done.")
         self.show_single_file_button.Enable()
 
-    def process_image(self, input_image, output_path):
+    def process_image(self, input_image, output_path: str):
+
         # Step 1: Scale image
         img = Image.open(input_image)
         img = resize_with_ratio(img, SIZE)
 
         # Step 2: Create background
-        bg_size = int(SIZE * 1.7)
-        bg = img.resize((bg_size, bg_size), Image.Resampling.BICUBIC)
+
+        bg = img.resize((int(img.width * 1.7), int(img.height * 1.7)), Image.Resampling.BICUBIC)
+        # bg.save(output_path.replace(".jpg", "resized_background.jpg"))
         bg = bg.filter(ImageFilter.GaussianBlur(180))
+        # bg.save(output_path.replace(".jpg", "blurred_background.jpg"))
 
         # Step 3: Overlay
         final_image = Image.new("RGB", (SIZE, SIZE))
         final_image.paste(bg, ((SIZE - bg.width) // 2, (SIZE - bg.height) // 2))
+        # final_image.save(output_path.replace(".jpg", "pasted_background.jpg"))
         final_image.paste(img, ((SIZE - img.width) // 2, 0))
 
         # Save processed image
