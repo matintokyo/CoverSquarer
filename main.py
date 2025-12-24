@@ -5,19 +5,25 @@ import concurrent.futures
 from PIL import Image, ImageFilter
 from pathlib import Path
 import subprocess
+from pubsub import pub
 
 SIZE = 2400
+VERSION = "2.2"
 
 
 class SquarerFrame(squarer_gui.MyFrame):
     def __init__(self, *args, **kwds):
         super().__init__(*args, **kwds)
         self.config = wx.Config("Squarer")
+        self.SetTitle(f'Squarer v{VERSION}')
 
         self.executor = concurrent.futures.ThreadPoolExecutor()
         self.done_counter = 0
         self.todo_counter = 0
         self.single_output_path = None
+
+        #QuickDrop Tab Controls
+        pub.subscribe(self.on_files_drop, "quickdrop")
 
         # Single Tab Controls
         self.single_go_button.Bind(wx.EVT_BUTTON, self.on_single_go)
@@ -32,6 +38,7 @@ class SquarerFrame(squarer_gui.MyFrame):
         self.show_single_file_button.Bind(wx.EVT_BUTTON, self.on_show_single_file)
         self.show_folder_button.Bind(wx.EVT_BUTTON, self.on_show_output_folder)
 
+
     def on_input_change(self, event):
         self.config.Write("input_dir_path", self.input_dir_picker.GetPath())
 
@@ -44,8 +51,25 @@ class SquarerFrame(squarer_gui.MyFrame):
     def on_show_output_folder(self, event):
         os.startfile(self.output_dir_picker.GetPath())
 
-    def on_radio_change(self, event):
-        pass
+    def on_files_drop(self, data):
+        self.statusbar.SetStatusText("Processing...")
+        self.done_counter = 0
+
+        # List input images
+        input_images= [filepath for filepath in data if filepath.endswith(('.png', '.jpg', '.jpeg'))]
+        if len(input_images) == 0:
+            self.statusbar.SetStatusText("No image files found.")
+            return
+
+        output_dir = Path(input_images[0]).parent.absolute()
+
+
+        self.todo_counter = len(input_images)
+        for image_path in input_images:
+            output_path = get_save_path(image_path, output_dir, quickdrop=True)
+            # self.process_image(image_path,  get_save_path(image_path, output_dir, quickdrop=True))
+            future = self.executor.submit(self.process_image, image_path, get_save_path(image_path, output_dir, quickdrop=True))
+            future.add_done_callback(self.UpdateStatus)
 
     def on_go(self, event):
         self.statusbar.SetStatusText("Processing...")
@@ -123,7 +147,7 @@ class SquarerFrame(squarer_gui.MyFrame):
         final_image = Image.new("RGB", (SIZE, SIZE))
         final_image.paste(bg, ((SIZE - bg.width) // 2, (SIZE - bg.height) // 2))
         # final_image.save(output_path.replace(".jpg", "pasted_background.jpg"))
-        final_image.paste(img, ((SIZE - img.width) // 2, 0))
+        final_image.paste(img, ((SIZE - img.width) // 2, (SIZE - img.height) // 2))
 
         # Save processed image
         final_image.save(output_path)
@@ -139,12 +163,25 @@ def zoom_at(img, x, y, zoom):
 
 def resize_with_ratio(img, SIZE):
     w, h = img.size
-    new_size = (SIZE * w // h, SIZE)
+    if w<=h:
+        new_size = (SIZE * w // h, SIZE)
+    else:
+        new_size = (SIZE, SIZE * h // w)
     return img.resize(new_size, Image.Resampling.BICUBIC)
 
 
-def get_save_path(input_image, output_path):
-    return os.path.join(output_path, os.path.basename(input_image))
+def get_save_path(input_image, output_path, quickdrop=False):
+    if quickdrop:
+        image_path = Path(input_image)
+        filename: str
+        if image_path.name[0] == "_":
+            filename = image_path.name[1:]
+        else:
+            extension = image_path.suffix
+            filename = str(image_path.name).replace(extension, f"_sq{extension}")
+        return str(output_path) + os.sep + filename
+    else:
+        return os.path.join(output_path, os.path.basename(input_image))
 
 
 class SquarerApp(wx.App):
